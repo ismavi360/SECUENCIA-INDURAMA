@@ -266,7 +266,7 @@
                         <h3 style="margin:5px 0;">${datos.responsable}</h3>
                         ${completado && timeFin ? `<span class="timestamp">Finalizado: ${timeFin} | TIEMPO DEL PROCESO: ${duracionPaso}</span>` : ''}
                     </div>
-                    ${completado ? '<span class="completed-text">COMPLETADO ✅</span>' : (activo ? '<span class="process-text">EN PROCESO 🔵</span>' : '')}
+                    ${completado ? '<span class="completed-text">COMPLETADO</span>' : (activo ? '<span class="process-text">EN PROCESO</span>' : '')}
                 </div>
                 <div style="display:flex; gap:10px; margin-top:15px">
                     <button class="btn btn-outline" style="padding:10px; font-size:13px" onclick="toggleActs(${i})">ACTIVIDADES (${doneActs.length}/${datos.actividades.length})</button>
@@ -282,7 +282,7 @@
                         const tAct = prodGlobal.timestampsActividades?.[`${i}-${ai}`] || "";
                         return `<div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid #f0f0f0">
                             <div><span style="font-size:14px; ${hecha?'text-decoration:line-through; color:gray':''}">${a}</span>${hecha && tAct ? `<span class="timestamp">${tAct}</span>`:''}</div>
-                            ${hecha ? '<span class="completed-text">COMPLETADO ✅</span>' : (puedeActuar ? `<button class="btn btn-outline ${confirmandoId===idC?'btn-confirm':''}" style="width:auto; padding:5px 12px; font-size:11px" onclick="procesarAccion('act', ${i}, ${ai}, '${idC}')">${confirmandoId===idC?'CONFIRMAR':'LISTO'}</button>` : '')}
+                            ${hecha ? '<span class="completed-text">COMPLETADO</span>' : (puedeActuar ? `<button class="btn btn-outline ${confirmandoId===idC?'btn-confirm':''}" style="width:auto; padding:5px 12px; font-size:11px" onclick="procesarAccion('act', ${i}, ${ai}, '${idC}')">${confirmandoId===idC?'CONFIRMAR':'LISTO'}</button>` : '')}
                         </div>`;
                     }).join('')}
                 </div>`;
@@ -426,3 +426,4 @@
 </script>
 </body>
 </html>
+
