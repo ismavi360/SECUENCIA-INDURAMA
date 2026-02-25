@@ -148,7 +148,7 @@
             group.innerHTML = "";
             configGlobal.responsables.forEach(r => {
                 if(r !== "MANTENIMIENTO" && r !== "ADMINISTRADOR"){
-                   const opt = document.createElement('option'); opt.value = r; opt.innerText = r; group.appendChild(opt);
+                    const opt = document.createElement('option'); opt.value = r; opt.innerText = r; group.appendChild(opt);
                 }
             });
             if(miUsuario) renderApp();
@@ -334,6 +334,7 @@
 
                 if (pNum + 1 === configGlobal.pasos.length) updateData.endTime = ahoraMs;
             } else {
+                // LOGICA DE ACTIVIDADES CON FINALIZACION AUTOMATICA
                 const ac = { ...(prodGlobal.actividadesCompletadas || {}) }; 
                 if(!ac[pNum]) ac[pNum] = [];
                 const tsA = { ...(prodGlobal.timestampsActividades || {}) };
@@ -344,6 +345,37 @@
                 confirmandoId = null;
                 updateData.actividadesCompletadas = ac;
                 updateData.timestampsActividades = tsA;
+
+                // Verificación de fin de paso automático
+                const totalActs = configGlobal.pasos[pNum].actividades.length;
+                if(ac[pNum].length === totalActs) {
+                    const ts = { ...(prodGlobal.timestampsPasos || {}) }; 
+                    const rawTs = { ...(prodGlobal.rawTimestampsPasos || {}) };
+                    const durPasos = { ...(prodGlobal.duracionesPasos || {}) };
+                    
+                    ts[pNum] = ahoraStr;
+                    rawTs[pNum] = ahoraMs;
+
+                    let inicioRef = (pNum === 0) ? (updateData.startTime || prodGlobal.startTime) : (prodGlobal.rawTimestampsPasos ? prodGlobal.rawTimestampsPasos[pNum-1] : null);
+                    
+                    if (inicioRef) {
+                        let inicioVal = typeof inicioRef === 'object' ? inicioRef.seconds * 1000 : inicioRef;
+                        let diff = Math.floor((ahoraMs - inicioVal) / 1000);
+                        const mins = Math.floor(diff / 60).toString().padStart(2, '0');
+                        const secs = (diff % 60).toString().padStart(2, '0');
+                        durPasos[pNum] = `${mins}:${secs}`;
+                    } else {
+                        durPasos[pNum] = "00:00";
+                    }
+
+                    updateData.pasoActivo = pNum + 1;
+                    updateData.timestampsPasos = ts;
+                    updateData.rawTimestampsPasos = rawTs;
+                    updateData.duracionesPasos = durPasos;
+                    panelAbiertoIdx = -1; // Cerrar panel automáticamente
+
+                    if (pNum + 1 === configGlobal.pasos.length) updateData.endTime = ahoraMs;
+                }
             }
             await updateDoc(prodRef, updateData);
             if(timerConfirm) clearTimeout(timerConfirm);
@@ -426,4 +458,3 @@
 </script>
 </body>
 </html>
-
