@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Indurama | v4.0</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.plugin.autotable.min.js"></script>
     <style>
         :root {
             --apple-bg: #f5f5f7;
@@ -63,8 +65,8 @@
 
 <div class="wrapper">
     <div id="login-screen" class="glass-card">
-        <div class="main-title">SECUENCIAS DE ARRANQUE AL CAMBIO DE SUMINISTRO DE ENERGIA</div>
-        <div class="sub-title">INDURAMA - Control de procesos V1.0</div>
+        <div class="main-title">CONTROL DE SECUENCIAS CAMBIO SUMINISTRO DE ENERGIA INDURAMA</div>
+        <div class="sub-title">Control de procesos V1.0</div>
         <select id="user-select" onchange="checkUserSelection()">
             <option value="" disabled selected>Seleccione usuario...</option>
             <option value="ADMINISTRADOR">⚙️ ADMINISTRADOR</option>
@@ -90,6 +92,8 @@
             <b id="progress-text" style="font-size: 16px; color: var(--apple-blue); min-width: 45px;">0%</b>
             <div class="timer-display">TIEMPO TOTAL: <span id="cronometro">00:00</span></div>
         </div>
+
+        <button id="btn-reporte" class="btn btn-confirm" style="display:none; margin-bottom:20px;" onclick="generarReportePDF()">📥 DESCARGAR REPORTE PDF</button>
 
         <div id="steps-container"></div>
         <button id="btn-reset-prog" class="btn" style="color:var(--apple-red); border:1px solid var(--apple-red); background:none; display:none;" onclick="confirmarRestablecer()">RESTABLECER SECUENCIA COMPLETA</button>
@@ -224,6 +228,7 @@
     function renderApp() {
         const container = document.getElementById('steps-container');
         const alertBox = document.getElementById('turn-alert');
+        const btnReporte = document.getElementById('btn-reporte');
         if(!configGlobal || !prodGlobal) return;
         
         container.innerHTML = "";
@@ -232,6 +237,8 @@
         const pct = configGlobal.pasos.length > 0 ? Math.round((pasoActual / configGlobal.pasos.length) * 100) : 0;
         document.getElementById('progress-bar').style.width = pct + "%";
         document.getElementById('progress-text').innerText = pct + "%";
+
+        btnReporte.style.display = (pct === 100) ? 'block' : 'none';
 
         const respPasoActual = configGlobal.pasos[pasoActual]?.responsable;
         if (respPasoActual) {
@@ -309,78 +316,130 @@
                 const ts = { ...(prodGlobal.timestampsPasos || {}) }; 
                 const rawTs = { ...(prodGlobal.rawTimestampsPasos || {}) };
                 const durPasos = { ...(prodGlobal.duracionesPasos || {}) };
-                
                 ts[pNum] = ahoraStr;
                 rawTs[pNum] = ahoraMs;
 
                 let inicioRef = (pNum === 0) ? (updateData.startTime || prodGlobal.startTime) : (prodGlobal.rawTimestampsPasos ? prodGlobal.rawTimestampsPasos[pNum-1] : null);
-                
                 if (inicioRef) {
                     let inicioVal = typeof inicioRef === 'object' ? inicioRef.seconds * 1000 : inicioRef;
                     let diff = Math.floor((ahoraMs - inicioVal) / 1000);
                     const mins = Math.floor(diff / 60).toString().padStart(2, '0');
                     const secs = (diff % 60).toString().padStart(2, '0');
                     durPasos[pNum] = `${mins}:${secs}`;
-                } else {
-                    durPasos[pNum] = "00:00";
-                }
+                } else { durPasos[pNum] = "00:00"; }
 
-                panelAbiertoIdx = -1;
-                confirmandoId = null;
                 updateData.pasoActivo = pNum + 1;
                 updateData.timestampsPasos = ts;
                 updateData.rawTimestampsPasos = rawTs;
                 updateData.duracionesPasos = durPasos;
-
+                panelAbiertoIdx = -1;
                 if (pNum + 1 === configGlobal.pasos.length) updateData.endTime = ahoraMs;
             } else {
-                // LOGICA DE ACTIVIDADES CON FINALIZACION AUTOMATICA
                 const ac = { ...(prodGlobal.actividadesCompletadas || {}) }; 
                 if(!ac[pNum]) ac[pNum] = [];
                 const tsA = { ...(prodGlobal.timestampsActividades || {}) };
+                const rawTsA = { ...(prodGlobal.rawTimestampsActividades || {}) };
+                const tInicioA = { ...(prodGlobal.inicioActividades || {}) };
+
+                if(ac[pNum].length === 0) tInicioA[pNum] = ahoraStr;
+
                 if(!ac[pNum].includes(actIdx)) {
                     ac[pNum].push(actIdx);
                     tsA[`${pNum}-${actIdx}`] = ahoraStr;
+                    rawTsA[`${pNum}-${actIdx}`] = ahoraMs;
                 }
-                confirmandoId = null;
                 updateData.actividadesCompletadas = ac;
                 updateData.timestampsActividades = tsA;
+                updateData.rawTimestampsActividades = rawTsA;
+                updateData.inicioActividades = tInicioA;
 
-                // Verificación de fin de paso automático
                 const totalActs = configGlobal.pasos[pNum].actividades.length;
                 if(ac[pNum].length === totalActs) {
                     const ts = { ...(prodGlobal.timestampsPasos || {}) }; 
                     const rawTs = { ...(prodGlobal.rawTimestampsPasos || {}) };
                     const durPasos = { ...(prodGlobal.duracionesPasos || {}) };
-                    
                     ts[pNum] = ahoraStr;
                     rawTs[pNum] = ahoraMs;
-
                     let inicioRef = (pNum === 0) ? (updateData.startTime || prodGlobal.startTime) : (prodGlobal.rawTimestampsPasos ? prodGlobal.rawTimestampsPasos[pNum-1] : null);
-                    
                     if (inicioRef) {
                         let inicioVal = typeof inicioRef === 'object' ? inicioRef.seconds * 1000 : inicioRef;
                         let diff = Math.floor((ahoraMs - inicioVal) / 1000);
                         const mins = Math.floor(diff / 60).toString().padStart(2, '0');
                         const secs = (diff % 60).toString().padStart(2, '0');
                         durPasos[pNum] = `${mins}:${secs}`;
-                    } else {
-                        durPasos[pNum] = "00:00";
-                    }
-
+                    } else { durPasos[pNum] = "00:00"; }
                     updateData.pasoActivo = pNum + 1;
                     updateData.timestampsPasos = ts;
                     updateData.rawTimestampsPasos = rawTs;
                     updateData.duracionesPasos = durPasos;
-                    panelAbiertoIdx = -1; // Cerrar panel automáticamente
-
+                    panelAbiertoIdx = -1;
                     if (pNum + 1 === configGlobal.pasos.length) updateData.endTime = ahoraMs;
                 }
             }
+            confirmandoId = null;
             await updateDoc(prodRef, updateData);
             if(timerConfirm) clearTimeout(timerConfirm);
             renderApp();
         }
+    };
+
+    window.generarReportePDF = () => {
+        const { jsPDF } = window.jspdf;
+        const docPDF = new jsPDF('l', 'mm', 'a4');
+        
+        docPDF.setFontSize(16);
+        docPDF.text("REPORTE DE SECUENCIA - INDURAMA", 14, 15);
+        docPDF.setFontSize(10);
+        docPDF.text(`Fecha: ${new Date().toLocaleDateString()}`, 14, 22);
+        docPDF.text(`Tiempo Total General: ${document.getElementById('cronometro').innerText}`, 14, 27);
+
+        const rows = [];
+        configGlobal.pasos.forEach((paso, i) => {
+            const responsable = paso.responsable;
+            const tiempoTotalPaso = prodGlobal.duracionesPasos?.[i] || "00:00";
+            
+            // Referencia de inicio para la primera actividad del paso
+            let refInicioMs = (i === 0) 
+                ? (typeof prodGlobal.startTime === 'object' ? prodGlobal.startTime.seconds * 1000 : prodGlobal.startTime)
+                : (prodGlobal.rawTimestampsPasos?.[i-1]);
+
+            paso.actividades.forEach((act, ai) => {
+                const finMs = prodGlobal.rawTimestampsActividades?.[`${i}-${ai}`];
+                const horaInicioAct = ai === 0 ? prodGlobal.inicioActividades?.[i] : prodGlobal.timestampsActividades?.[`${i}-${ai-1}`];
+                const horaFinAct = prodGlobal.timestampsActividades?.[`${i}-${ai}`] || "-";
+                
+                let duracionAct = "00:00";
+                if(finMs && refInicioMs) {
+                    let diff = Math.floor((finMs - refInicioMs) / 1000);
+                    const mins = Math.floor(diff / 60).toString().padStart(2, '0');
+                    const secs = (diff % 60).toString().padStart(2, '0');
+                    duracionAct = `${mins}:${secs}`;
+                }
+
+                rows.push([
+                    responsable,
+                    act,
+                    horaInicioAct || "-",
+                    horaFinAct,
+                    duracionAct,
+                    tiempoTotalPaso
+                ]);
+
+                // El fin de esta actividad es el inicio de la siguiente
+                refInicioMs = finMs;
+            });
+        });
+
+        docPDF.autoTable({
+            startY: 35,
+            head: [['RESPONSABLE', 'ACTIVIDAD', 'INICIO ACT.', 'FIN ACT.', 'DURACIÓN ACT.', 'TIEMPO TOTAL PASO']],
+            body: rows,
+            theme: 'grid',
+            headStyles: { fillColor: [0, 51, 102] },
+            styles: { fontSize: 8 }
+        });
+
+        docPDF.save(`Reporte_Indurama_${new Date().getTime()}.pdf`);
     };
 
     window.confirmarRestablecer = async () => {
@@ -402,9 +461,11 @@
                 pasoActivo: 0, 
                 actividadesCompletadas: {}, 
                 timestampsActividades: {}, 
+                rawTimestampsActividades: {},
                 timestampsPasos: {}, 
                 rawTimestampsPasos: {},
                 duracionesPasos: {},
+                inicioActividades: {},
                 ultimoSonido: -1, 
                 startTime: null, 
                 endTime: null 
