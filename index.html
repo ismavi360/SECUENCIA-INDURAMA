@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Indurama | v4.0.1</title>
+    <title>Indurama | v4.0</title>
     <style>
         :root {
             --apple-bg: #f5f5f7;
@@ -15,7 +15,7 @@
             --apple-green: #34c759;
             --apple-green-soft: #e8f5e9;
             --apple-red: #ff3b30;
-            --apple-yellow: #fff9c4; /* Amarillo claro solicitado */
+            --apple-yellow: #fff9c4;
             --apple-yellow-text: #856404;
         }
 
@@ -41,7 +41,7 @@
         .step-item.active { background-color: var(--apple-blue-soft); border: 2px solid var(--apple-blue); }
         .step-item.completed { background-color: var(--apple-green-soft); border: 1px solid var(--apple-green); }
 
-        .progress-container { background: #e5e5ea; height: 10px; border-radius: 10px; margin: 20px 0; }
+        .progress-container { background: #e5e5ea; height: 10px; border-radius: 10px; flex: 1; }
         .progress-bar { background: var(--apple-blue); height: 100%; border-radius: 10px; transition: width 0.5s; }
         
         .timestamp { font-size: 11px; color: #555; font-weight: 600; display: block; margin-top: 4px; }
@@ -49,6 +49,10 @@
         #turn-alert { display: none; padding: 18px; border-radius: 16px; text-align: center; font-size: 15px; font-weight: 800; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
         .alert-mine { background: var(--apple-green); color: white; }
         .alert-others { background: var(--apple-yellow); color: var(--apple-yellow-text); border: 1px solid #fbc02d; }
+
+        .timer-display { font-size: 14px; font-weight: 700; color: #555; white-space: nowrap; margin-left: 10px; }
+        .completed-text { font-size: 12px; font-weight: 800; color: var(--apple-green); }
+        .process-text { font-size: 12px; font-weight: 800; color: var(--apple-blue); }
 
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; } }
     </style>
@@ -59,8 +63,8 @@
 
 <div class="wrapper">
     <div id="login-screen" class="glass-card">
-        <div class="main-title">SISTEMA DE SECUENCIA OPERACIONES INDURAMA</div>
-        <div class="sub-title">Puesta en marcha planta | v4.0.1</div>
+        <div class="main-title">CONTROL DE SECUENCIAS CAMBIO SUMINISTRO DE ENERGIA INDURAMA</div>
+        <div class="sub-title">Control de procesos V1.0</div>
         <select id="user-select" onchange="checkUserSelection()">
             <option value="" disabled selected>Seleccione usuario...</option>
             <option value="ADMINISTRADOR">⚙️ ADMINISTRADOR</option>
@@ -75,11 +79,18 @@
 
     <div id="app-screen" style="display:none;">
         <div id="turn-alert"></div>
+
         <div class="glass-card" style="padding: 15px; display: flex; justify-content: space-between; align-items: center;">
             <div><small>USUARIO:</small><br><b id="display-user" style="color:var(--apple-blue)"></b></div>
             <button class="btn btn-outline" style="width:auto; padding:10px 15px;" onclick="location.reload()">SALIR</button>
         </div>
-        <div class="progress-container"><div id="progress-bar" class="progress-bar"></div></div>
+        
+        <div style="display: flex; align-items: center; gap: 5px; margin: 20px 0;">
+            <div class="progress-container"><div id="progress-bar" class="progress-bar"></div></div>
+            <b id="progress-text" style="font-size: 16px; color: var(--apple-blue); min-width: 45px;">0%</b>
+            <div class="timer-display">TIEMPO TOTAL: <span id="cronometro">00:00</span></div>
+        </div>
+
         <div id="steps-container"></div>
         <button id="btn-reset-prog" class="btn" style="color:var(--apple-red); border:1px solid var(--apple-red); background:none; display:none;" onclick="confirmarRestablecer()">RESTABLECER SECUENCIA COMPLETA</button>
     </div>
@@ -89,13 +100,10 @@
             <h3>Configuración General</h3>
             <label style="font-size: 13px; color: var(--apple-gray);">Duración alerta sonido (segundos):</label>
             <input type="number" id="admin-sound-dur" min="1" max="10" value="1">
-            
             <label style="font-size: 13px; color: var(--apple-gray); margin-top: 10px; display: block;">Responsables (separados por coma):</label>
             <input type="text" id="admin-users" placeholder="Juan, Pedro, Maria">
-            
             <label style="font-size: 13px; color: var(--apple-gray); margin-top: 10px; display: block;">Número total de pasos:</label>
             <input type="number" id="admin-step-count" placeholder="Num. Pasos" onchange="generarFormularioPasos()">
-            
             <div id="steps-setup-container"></div>
             <button id="btn-save-config" class="btn btn-primary" onclick="confirmarGuardadoAdmin()">GUARDAR CONFIGURACIÓN</button>
             <button class="btn btn-outline" onclick="location.reload()">VOLVER</button>
@@ -125,6 +133,7 @@
     let miUsuario = "", configGlobal = null, prodGlobal = null, pinsSeguridad = {};
     let confirmandoId = null, timerConfirm = null, panelAbiertoIdx = -1;
     let ultimoPasoNotificado = -1;
+    let intervalCronometro = null;
 
     async function init() {
         const snap = await getDoc(securityRef);
@@ -160,9 +169,34 @@
                 ultimoPasoNotificado = data.pasoActivo;
             }
             prodGlobal = data;
+            actualizarLogicaCronometro();
         }
         if(miUsuario) renderApp();
     });
+
+    function actualizarLogicaCronometro() {
+        if (intervalCronometro) clearInterval(intervalCronometro);
+        const display = document.getElementById('cronometro');
+        if (!prodGlobal || !prodGlobal.startTime) {
+            display.innerText = "00:00";
+            return;
+        }
+        const tick = () => {
+            let ahora = Date.now();
+            let inicio = typeof prodGlobal.startTime === 'object' ? prodGlobal.startTime.seconds * 1000 : prodGlobal.startTime;
+            if (prodGlobal.endTime) {
+                ahora = typeof prodGlobal.endTime === 'object' ? prodGlobal.endTime.seconds * 1000 : prodGlobal.endTime;
+                clearInterval(intervalCronometro);
+            }
+            let diff = Math.floor((ahora - inicio) / 1000);
+            if (diff < 0) diff = 0;
+            const mins = Math.floor(diff / 60).toString().padStart(2, '0');
+            const secs = (diff % 60).toString().padStart(2, '0');
+            display.innerText = `${mins}:${secs}`;
+        };
+        tick();
+        if (!prodGlobal.endTime) intervalCronometro = setInterval(tick, 1000);
+    }
 
     window.checkUserSelection = () => {
         const user = document.getElementById('user-select').value;
@@ -174,7 +208,6 @@
         const pin = document.getElementById('user-pin').value;
         if(!miUsuario) return;
         if(pinsSeguridad[miUsuario] && pin !== pinsSeguridad[miUsuario]) return alert("PIN Incorrecto");
-
         if(miUsuario === "ADMINISTRADOR") {
             cargarDatosAdmin();
             document.getElementById('login-screen').style.display = 'none';
@@ -194,10 +227,12 @@
         if(!configGlobal || !prodGlobal) return;
         
         container.innerHTML = "";
-        const pasoActual = prodGlobal.pasoActivo || 0;
-        document.getElementById('progress-bar').style.width = ((pasoActual / configGlobal.pasos.length) * 100) + "%";
+        const pasoActual = Number(prodGlobal.pasoActivo) || 0;
+        
+        const pct = configGlobal.pasos.length > 0 ? Math.round((pasoActual / configGlobal.pasos.length) * 100) : 0;
+        document.getElementById('progress-bar').style.width = pct + "%";
+        document.getElementById('progress-text').innerText = pct + "%";
 
-        // Lógica de Alerta Solicitada
         const respPasoActual = configGlobal.pasos[pasoActual]?.responsable;
         if (respPasoActual) {
             alertBox.style.display = 'block';
@@ -220,6 +255,7 @@
             const panelAbierto = panelAbiertoIdx === i;
             const doneActs = prodGlobal.actividadesCompletadas?.[i] || [];
             const timeFin = prodGlobal.timestampsPasos?.[i] || "";
+            const duracionPaso = prodGlobal.duracionesPasos?.[i] || "";
 
             const item = document.createElement('div');
             item.className = `step-item ${completado ? 'completed' : (activo ? 'active' : '')}`;
@@ -228,9 +264,9 @@
                     <div>
                         <small>PASO ${i+1}</small>
                         <h3 style="margin:5px 0;">${datos.responsable}</h3>
-                        ${completado && timeFin ? `<span class="timestamp">Finalizado: ${timeFin}</span>` : ''}
+                        ${completado && timeFin ? `<span class="timestamp">Finalizado: ${timeFin} | TIEMPO DEL PROCESO: ${duracionPaso}</span>` : ''}
                     </div>
-                    ${completado ? '✅' : (activo ? '🔵' : '')}
+                    ${completado ? '<span class="completed-text">COMPLETADO ✅</span>' : (activo ? '<span class="process-text">EN PROCESO 🔵</span>' : '')}
                 </div>
                 <div style="display:flex; gap:10px; margin-top:15px">
                     <button class="btn btn-outline" style="padding:10px; font-size:13px" onclick="toggleActs(${i})">ACTIVIDADES (${doneActs.length}/${datos.actividades.length})</button>
@@ -246,7 +282,7 @@
                         const tAct = prodGlobal.timestampsActividades?.[`${i}-${ai}`] || "";
                         return `<div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid #f0f0f0">
                             <div><span style="font-size:14px; ${hecha?'text-decoration:line-through; color:gray':''}">${a}</span>${hecha && tAct ? `<span class="timestamp">${tAct}</span>`:''}</div>
-                            ${hecha ? '✔' : (puedeActuar ? `<button class="btn btn-outline ${confirmandoId===idC?'btn-confirm':''}" style="width:auto; padding:5px 12px; font-size:11px" onclick="procesarAccion('act', ${i}, ${ai}, '${idC}')">${confirmandoId===idC?'CONFIRMAR':'LISTO'}</button>` : '')}
+                            ${hecha ? '<span class="completed-text">COMPLETADO ✅</span>' : (puedeActuar ? `<button class="btn btn-outline ${confirmandoId===idC?'btn-confirm':''}" style="width:auto; padding:5px 12px; font-size:11px" onclick="procesarAccion('act', ${i}, ${ai}, '${idC}')">${confirmandoId===idC?'CONFIRMAR':'LISTO'}</button>` : '')}
                         </div>`;
                     }).join('')}
                 </div>`;
@@ -262,24 +298,56 @@
             if(timerConfirm) clearTimeout(timerConfirm);
             timerConfirm = setTimeout(() => { confirmandoId = null; renderApp(); }, 3000);
         } else {
-            clearTimeout(timerConfirm); confirmandoId = null;
-            const ahora = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
+            const pNum = Number(pasoIdx);
+            const ahoraMs = Date.now();
+            const ahoraStr = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
+            let updateData = {};
             
+            if (!prodGlobal.startTime && miUsuario === "MANTENIMIENTO") updateData.startTime = ahoraMs;
+
             if(tipo === 'paso') {
-                const ts = prodGlobal.timestampsPasos || {}; 
-                ts[pasoIdx] = ahora;
-                panelAbiertoIdx = -1;
-                await updateDoc(prodRef, { pasoActivo: pasoIdx + 1, timestampsPasos: ts });
-            } else {
-                const ac = prodGlobal.actividadesCompletadas || {}; 
-                if(!ac[pasoIdx]) ac[pasoIdx] = [];
-                const tsA = prodGlobal.timestampsActividades || {};
-                if(!ac[pasoIdx].includes(actIdx)) {
-                    ac[pasoIdx].push(actIdx);
-                    tsA[`${pasoIdx}-${actIdx}`] = ahora;
+                const ts = { ...(prodGlobal.timestampsPasos || {}) }; 
+                const rawTs = { ...(prodGlobal.rawTimestampsPasos || {}) };
+                const durPasos = { ...(prodGlobal.duracionesPasos || {}) };
+                
+                ts[pNum] = ahoraStr;
+                rawTs[pNum] = ahoraMs;
+
+                let inicioRef = (pNum === 0) ? (updateData.startTime || prodGlobal.startTime) : (prodGlobal.rawTimestampsPasos ? prodGlobal.rawTimestampsPasos[pNum-1] : null);
+                
+                if (inicioRef) {
+                    let inicioVal = typeof inicioRef === 'object' ? inicioRef.seconds * 1000 : inicioRef;
+                    let diff = Math.floor((ahoraMs - inicioVal) / 1000);
+                    const mins = Math.floor(diff / 60).toString().padStart(2, '0');
+                    const secs = (diff % 60).toString().padStart(2, '0');
+                    durPasos[pNum] = `${mins}:${secs}`;
+                } else {
+                    durPasos[pNum] = "00:00";
                 }
-                await updateDoc(prodRef, { actividadesCompletadas: ac, timestampsActividades: tsA });
+
+                panelAbiertoIdx = -1;
+                confirmandoId = null;
+                updateData.pasoActivo = pNum + 1;
+                updateData.timestampsPasos = ts;
+                updateData.rawTimestampsPasos = rawTs;
+                updateData.duracionesPasos = durPasos;
+
+                if (pNum + 1 === configGlobal.pasos.length) updateData.endTime = ahoraMs;
+            } else {
+                const ac = { ...(prodGlobal.actividadesCompletadas || {}) }; 
+                if(!ac[pNum]) ac[pNum] = [];
+                const tsA = { ...(prodGlobal.timestampsActividades || {}) };
+                if(!ac[pNum].includes(actIdx)) {
+                    ac[pNum].push(actIdx);
+                    tsA[`${pNum}-${actIdx}`] = ahoraStr;
+                }
+                confirmandoId = null;
+                updateData.actividadesCompletadas = ac;
+                updateData.timestampsActividades = tsA;
             }
+            await updateDoc(prodRef, updateData);
+            if(timerConfirm) clearTimeout(timerConfirm);
+            renderApp();
         }
     };
 
@@ -298,7 +366,17 @@
             }, 3000);
         } else {
             clearTimeout(timerConfirm); confirmandoId = null;
-            await setDoc(prodRef, { pasoActivo: 0, actividadesCompletadas: {}, timestampsActividades: {}, timestampsPasos: {}, ultimoSonido: -1 });
+            await setDoc(prodRef, { 
+                pasoActivo: 0, 
+                actividadesCompletadas: {}, 
+                timestampsActividades: {}, 
+                timestampsPasos: {}, 
+                rawTimestampsPasos: {},
+                duracionesPasos: {},
+                ultimoSonido: -1, 
+                startTime: null, 
+                endTime: null 
+            });
             location.reload();
         }
     };
@@ -314,7 +392,6 @@
             const count = document.getElementById('admin-step-count').value;
             const resps = document.getElementById('admin-users').value.split(',').map(s => s.trim());
             const durSonido = parseInt(document.getElementById('admin-sound-dur').value) || 1;
-            
             const pasos = [];
             for(let i=0; i<count; i++){
                 pasos.push({ 
