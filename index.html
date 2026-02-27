@@ -21,7 +21,7 @@
             --apple-yellow-text: #856404;
         }
 
-        * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
+        * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; touch-action: pan-x pan-y; }
         body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; background-color: var(--apple-bg); color: var(--apple-text); margin: 0; padding: 15px; display: flex; justify-content: center; -webkit-font-smoothing: antialiased; }
         .wrapper { max-width: 550px; width: 100%; animation: fadeIn 0.5s ease-out; }
 
@@ -398,7 +398,6 @@
             const responsable = paso.responsable;
             const tiempoTotalPaso = prodGlobal.duracionesPasos?.[i] || "00:00";
             
-            // Referencia de inicio para la primera actividad del paso
             let refInicioMs = (i === 0) 
                 ? (typeof prodGlobal.startTime === 'object' ? prodGlobal.startTime.seconds * 1000 : prodGlobal.startTime)
                 : (prodGlobal.rawTimestampsPasos?.[i-1]);
@@ -416,16 +415,7 @@
                     duracionAct = `${mins}:${secs}`;
                 }
 
-                rows.push([
-                    responsable,
-                    act,
-                    horaInicioAct || "-",
-                    horaFinAct,
-                    duracionAct,
-                    tiempoTotalPaso
-                ]);
-
-                // El fin de esta actividad es el inicio de la siguiente
+                rows.push([ responsable, act, horaInicioAct || "-", horaFinAct, duracionAct, tiempoTotalPaso ]);
                 refInicioMs = finMs;
             });
         });
@@ -457,19 +447,7 @@
             }, 3000);
         } else {
             clearTimeout(timerConfirm); confirmandoId = null;
-            await setDoc(prodRef, { 
-                pasoActivo: 0, 
-                actividadesCompletadas: {}, 
-                timestampsActividades: {}, 
-                rawTimestampsActividades: {},
-                timestampsPasos: {}, 
-                rawTimestampsPasos: {},
-                duracionesPasos: {},
-                inicioActividades: {},
-                ultimoSonido: -1, 
-                startTime: null, 
-                endTime: null 
-            });
+            await setDoc(prodRef, { pasoActivo: 0, actividadesCompletadas: {}, timestampsActividades: {}, rawTimestampsActividades: {}, timestampsPasos: {}, rawTimestampsPasos: {}, duracionesPasos: {}, inicioActividades: {}, ultimoSonido: -1, startTime: null, endTime: null });
             location.reload();
         }
     };
@@ -487,10 +465,7 @@
             const durSonido = parseInt(document.getElementById('admin-sound-dur').value) || 1;
             const pasos = [];
             for(let i=0; i<count; i++){
-                pasos.push({ 
-                    responsable: document.getElementById(`resp-${i}`).value, 
-                    actividades: document.getElementById(`acts-${i}`).value.split('\n').filter(a => a.trim()!=='') 
-                });
+                pasos.push({ responsable: document.getElementById(`resp-${i}`).value, actividades: document.getElementById(`acts-${i}`).value.split('\n').filter(a => a.trim()!=='') });
             }
             await setDoc(configRef, { responsables: resps, pasos, duracionSonido: durSonido });
             location.reload();
@@ -516,7 +491,24 @@
         document.getElementById('admin-sound-dur').value = configGlobal.duracionSonido || 1;
         generarFormularioPasos(true);
     }
+
+    // --- BLOQUEO DE ZOOM INTEGRADO ---
+    document.addEventListener('touchstart', function (event) {
+        if (event.touches.length > 1) { event.preventDefault(); }
+    }, { passive: false });
+
+    let lastTouchEnd = 0;
+    document.addEventListener('touchend', function (event) {
+        const now = (new Date()).getTime();
+        if (now - lastTouchEnd <= 300) { event.preventDefault(); }
+        lastTouchEnd = now;
+    }, false);
+
+    document.addEventListener('gesturestart', function (event) {
+        event.preventDefault();
+    });
 </script>
 </body>
 </html>
+
 
